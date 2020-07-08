@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 import pandas as pd
 import matplotlib.pyplot as plt
-
+import random
 
 class PlantDataset(Dataset):
 
@@ -19,35 +19,42 @@ class PlantDataset(Dataset):
         """
 
         self.root_dir = root_dir
-        self.csv = root_dir
+        self.csv = pd.read_csv(csv_path)
         self.transform = transform
 
-        cat_filenames = os.listdir(os.path.join(root_dir, 'Cat'))
-        dog_filenames = os.listdir(os.path.join(root_dir, 'Dog'))
-        self.cat_list = [(os.path.join(root_dir, "Cat", fn), 0) for fn in cat_filenames if '.jpg' in fn]
-        self.dog_list = [(os.path.join(root_dir, "Dog", fn), 1) for fn in dog_filenames if '.jpg' in fn]
-        self.master_list = self.cat_list + self.dog_list
-
     def __len__(self):
-        return len(self.master_list)
+        return len(self.csv)
 
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
+    def check(self):
+        idx = random.randint(0, len(self.csv))
+        im_name = self.csv['image_id'][idx]
 
-        fp = self.master_list[idx][0]
-        label = self.master_list[idx][1]
+        fp = os.path.join(self.root_dir, im_name) + '.jpg'
+        # label = self.master_list[idx][1]
 
         img = Image.open(fp).convert('RGB')
+        plt.imshow(img)
+        # plt.title(f'{img.size}') #(2048, 1365)
+        label = [self.csv["healthy"][idx],
+                 self.csv["multiple_diseases"][idx],
+                 self.csv["rust"][idx],
+                 self.csv["scab"][idx]]
+        plt.title(f'{label}')
+        plt.show()
+
+    def __getitem__(self, idx):
+        im_name = self.csv['image_id'][idx]
+        fp = os.path.join(self.root_dir, im_name) + '.jpg'
+        img = Image.open(fp).convert('RGB')
+
+        #(2048, 1365)
+        label = torch.FloatTensor([self.csv["healthy"][idx],
+                                   self.csv["multiple_diseases"][idx],
+                                   self.csv["rust"][idx],
+                                   self.csv["scab"][idx]])
 
         if self.transform:
             img = self.transform(img)
-
-        # plt.imshow(img)
-        # plt.show()
-
-        # if img.shape[0] != 3:
-        #     img = img.repeat(3, 1, 1)
 
         sample = {'image': img, 'label': label}
         return sample

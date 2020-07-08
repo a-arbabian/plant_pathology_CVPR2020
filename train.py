@@ -1,39 +1,59 @@
 import torch
+import numpy as np
 from tqdm import tqdm
-from dataset import CatsDogsDataset
+from dataset import PlantDataset
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from torchvision.transforms import ColorJitter, CenterCrop, Normalize, ToTensor, Resize
-from torchvision.models import mobilenet_v2, resnet18
+from torchvision.models import mobilenet_v2, resnet18, resnext50_32x4d
 import torch.nn as nn
-from torch.nn import BCEWithLogitsLoss
+from torch.nn import CrossEntropyLoss
 from torch.optim import Adam
+from loss import CrossEntropyLossOneHot
 
-ROOT_DIR = '/home/ali/Desktop/Code/CatsDogsCNN/Cats-Dogs/PetImages'
-IMG_SIZE = 224
+# from albumentations import (
+#     Compose,
+#     GaussianBlur,
+#     HorizontalFlip,
+#     MedianBlur,
+#     MotionBlur,
+#     Normalize,
+#     OneOf,
+#     RandomBrightness,
+#     RandomContrast,
+#     Resize,
+#     ShiftScaleRotate,
+#     VerticalFlip,
+# )
+
+ROOT_DIR = '/home/ali/Documents/Datasets/plant_pathology_2020_FGVC7/images'
+CSV = '/home/ali/Documents/Datasets/plant_pathology_2020_FGVC7/train.csv'
+IMG_SIZE = np.array([480, 768], dtype=int) // 2
 EPOCHS = 20
-## PR: BCELoss: 0.012183905643756496
 
-#int(IMG_SIZE + (0.15 * IMG_SIZE))
-train_transforms = transforms.Compose([Resize((IMG_SIZE, IMG_SIZE)),
-                                       # CenterCrop(IMG_SIZE),
-                                       # ColorJitter(0.1, 0.1, 0.04, 0.03),
-                                       ToTensor(),
-                                       #Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True),
-                                       ])
+train_transforms = transforms.Compose([Resize(IMG_SIZE),
+                                       ToTensor()])
+
+dataset = PlantDataset(ROOT_DIR, csv_path=CSV, transform=train_transforms)
+# for i in range(100):
+#     dataset.check()
 
 
-dataset = CatsDogsDataset(ROOT_DIR, transform=train_transforms)
+
+
+
+
+
 train_loader = DataLoader(dataset,
-                          batch_size=128,
+                          batch_size=16,
                           shuffle=True,
                           num_workers=8,
                           drop_last=True)
 
-model = resnet18(pretrained=True)
-model.fc = nn.Linear(model.fc.in_features, 1)
+model = resnext50_32x4d(pretrained=True)
+model.fc = nn.Linear(model.fc.in_features, 4)
 
-criterion = BCEWithLogitsLoss(reduction='mean')
+criterion = CrossEntropyLossOneHot()
 optimizer = Adam(model.parameters(), lr=0.001)
 
 model.train()
@@ -44,7 +64,7 @@ for epoch in range(EPOCHS):
 
     for sample in tqdm(train_loader):
         inputs = sample['image'].cuda()
-        labels = sample['label'].unsqueeze(1).float().cuda()
+        labels = sample['label'].cuda()
 
         # zero the parameter gradients
         optimizer.zero_grad()
@@ -61,6 +81,6 @@ for epoch in range(EPOCHS):
         # print statistics
         running_loss += loss.item()
 
-    print(f"BCELoss: {running_loss/len(train_loader)}")
+    print(f"CELoss: {running_loss/len(train_loader)}")
 
 # def train(model, dataloader, criterion, optimizer):

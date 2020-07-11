@@ -50,17 +50,22 @@ class PlantDataset(Dataset):
         im_name = self.csv['image_id'][idx]
         fp = os.path.join(self.root_dir, im_name) + '.jpg'
         img = Image.open(fp).convert('RGB')
-
-        label = torch.FloatTensor([self.csv["healthy"][idx],
-                                   self.csv["multiple_diseases"][idx],
-                                   self.csv["rust"][idx],
-                                   self.csv["scab"][idx]])
-
         if self.transform:
             img = self.transform(img)
+
+        sample = {'image': img, 'image_id': im_name}
+
+        try:
+            label = torch.FloatTensor([self.csv["healthy"][idx],
+                                       self.csv["multiple_diseases"][idx],
+                                       self.csv["rust"][idx],
+                                       self.csv["scab"][idx]])
+            sample['label'] = label
+        except KeyError:
+            pass
+
         # plt.imshow(img.permute(1,2,0))
         # plt.show()
 
-        sample = {'image': img, 'label': label}
         return sample
 

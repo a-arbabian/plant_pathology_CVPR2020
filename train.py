@@ -4,8 +4,9 @@ from tqdm import tqdm
 
 import torch
 import torch.nn as nn
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, Softmax
 from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 from torchvision.models import mobilenet_v2, resnet18, resnext50_32x4d
 from torchvision.transforms import ColorJitter, CenterCrop, Normalize, ToTensor, Resize, Compose, RandomHorizontalFlip,\
@@ -41,9 +42,8 @@ from loss import CrossEntropyLossOneHot
 
 def train(model, dataloader, criterion, optimizer, num_epochs):
     model.train()
+    running_loss = 0.
     for epoch in range(num_epochs):
-        running_loss = 0.
-
         for sample in dataloader:
             inputs = sample['image'].cuda()
             labels = sample['label'].cuda()
@@ -55,7 +55,6 @@ def train(model, dataloader, criterion, optimizer, num_epochs):
             outputs = model(inputs)
 
             loss = criterion(outputs, labels)
-            #print(loss)
 
             with amp.scale_loss(loss, optimizer) as scaled_loss:
                 scaled_loss.backward()
@@ -64,33 +63,41 @@ def train(model, dataloader, criterion, optimizer, num_epochs):
 
             # print statistics
             running_loss += loss.item()
-        train_loss = running_loss/len(dataloader)
-        # print(f"Train Loss: {train_loss}")
-        return train_loss
+
+    train_loss = running_loss / (len(dataloader) * num_epochs)
+    return train_loss
 
 
-def validate(model, dataloader, criterion, num_epochs):
+def validate(model, dataloader, criterion, total_set_size):
     model.eval()
-    for epoch in range(num_epochs):
-        running_loss = 0.
+    running_loss = 0.
+    running_correct = 0
 
-        for sample in dataloader:
-            inputs = sample['image'].cuda()
-            labels = sample['label'].cuda()
+    for sample in dataloader:
+        inputs = sample['image'].cuda()
+        labels = sample['label'].cuda()
 
-            with torch.no_grad():
-                # forward + backward + optimize
-                outputs = model(inputs)
+        with torch.no_grad():
+            # forward + backward + optimize
+            outputs = model(inputs)
 
-                loss = criterion(outputs, labels)
+            loss = criterion(outputs, labels)
 
-                # print statistics
-                running_loss += loss.item()
+            # Update loss and accuracy
+            running_loss += loss.item()
+            # softmax across logits
+            softmax = Softmax(dim=1)
+            preds = softmax(outputs)
+            # argmax so both tensors are no longer one-hot
+            preds_argmax = preds.argmax(dim=1)
+            labels_argmax = labels.argmax(dim=1)
+            # add correct preds to running total
+            running_correct += (preds_argmax == labels_argmax).sum().item()
 
-        val_loss = running_loss / len(dataloader)
-        # print(f"Val Loss: {val_loss}")
+    val_loss = running_loss / len(dataloader)
+    val_acc = running_correct / total_set_size
 
-        return val_loss
+    return val_loss, val_acc
 
 
 def train_one_fold(i_fold, model, criterion, optimizer, train_loader, val_loader):
@@ -174,7 +181,7 @@ if __name__ == "__main__":
     SEED = 1984
     IMG_SIZE = np.array([480, 768], dtype=int) // 2  # Dataset images are size (2048, 1365)
     CROP_SIZE = np.array(IMG_SIZE * 1.2, dtype=int)
-    EPOCHS = 15
+    EPOCHS = 30
 
     ROOT_DIR = '/home/ali/Documents/Datasets/plant_pathology_2020_FGVC7/images'
     CSV_PATH = '/home/ali/Documents/Datasets/plant_pathology_2020_FGVC7/train.csv'
@@ -182,6 +189,8 @@ if __name__ == "__main__":
     train_df, val_df = train_test_split(df, test_size=0.2, random_state=SEED)
     train_df = train_df.reset_index()
     val_df = val_df.reset_index()
+    print(f"Training on {len(train_df)} samples!")
+    print(f"Validating on {len(val_df)} samples!")
 
     imagenet_mean = np.array([0.485, 0.456, 0.406]) * 255
     imagenet_mean = tuple(imagenet_mean.astype(int))
@@ -210,20 +219,27 @@ if __name__ == "__main__":
                               batch_size=24,
                               shuffle=True,
                               num_workers=4,
-                              drop_last=False)
+                              drop_last=True)
 
     val_loader = DataLoader(val_dataset,
                             batch_size=24,
                             shuffle=False,
                             num_workers=4,
-                            drop_last=False)
+                            drop_last=True)
 
     model = resnext50_32x4d(pretrained=True)
     model.fc = nn.Linear(model.fc.in_features, 4)
     model.cuda()
 
     criterion = CrossEntropyLossOneHot()
-    optimizer = Adam(model.parameters(), lr=0.0001)
+    optimizer = Adam(model.parameters(), lr=0.001)
+    # TODO: Warmup lr scheduler
+    lr_scheduler = ReduceLROnPlateau(optimizer,
+                                     factor=0.1,
+                                     patience=2,
+                                     mode='min',
+                                     verbose=True)
+
     # Mixed precision with amp
     model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
 
@@ -266,11 +282,18 @@ if __name__ == "__main__":
     for epoch in tqdm(range(EPOCHS), desc="Epoch: "):
         train_loss = train(model, train_loader, criterion, optimizer, num_epochs=1)
         writer.add_scalar('loss/train', train_loss, epoch)
-        val_loss = validate(model, val_loader, criterion, num_epochs=1)
+
+        val_loss, val_acc = validate(model, val_loader, criterion, total_set_size=len(val_dataset))
         writer.add_scalar('loss/val', val_loss, epoch)
+        writer.add_scalar('acc/val', val_acc, epoch)
+
+        writer.add_scalar('lr/train', optimizer.param_groups[0]['lr'], epoch)
+        lr_scheduler.step(val_loss)
         writer.flush()
+
         if val_loss < best_val_loss:
             print(f"Record val loss: {val_loss}")
+            best_val_loss = val_loss
             torch.save(model.state_dict(), f"./logs/{dt_string}/best.pt")
 
     writer.close()

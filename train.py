@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from tqdm import tqdm
+import random
 
 import torch
 import torch.nn as nn
@@ -23,21 +24,7 @@ from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 
 from dataset import PlantDataset
 from loss import CrossEntropyLossOneHot
-
-# from albumentations import (
-#     Compose,
-#     GaussianBlur,
-#     HorizontalFlip,
-#     MedianBlur,
-#     MotionBlur,
-#     Normalize,
-#     OneOf,
-#     RandomBrightness,
-#     RandomContrast,
-#     Resize,
-#     ShiftScaleRotate,
-#     VerticalFlip,
-# )
+from transforms import blur_gauss
 
 
 def train(model, dataloader, criterion, optimizer, num_epochs):
@@ -172,13 +159,16 @@ def train_one_fold(i_fold, model, criterion, optimizer, train_loader, val_loader
     return val_preds, train_fold_results
 
 
-def blur_gauss(img):
-    return img.filter(ImageFilter.GaussianBlur(3))
-
 if __name__ == "__main__":
     # TODO: Add arg parser
     N_FOLDS = 5
+    # Set the random seed manually for reproducibility
     SEED = 1984
+    torch.backends.cudnn.deterministic = True
+    random.seed(SEED)
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+
     IMG_SIZE = np.array([480, 768], dtype=int) // 2  # Dataset images are size (2048, 1365)
     CROP_SIZE = np.array(IMG_SIZE * 1.2, dtype=int)
     EPOCHS = 30
@@ -294,7 +284,7 @@ if __name__ == "__main__":
         if val_loss < best_val_loss:
             print(f"Record val loss: {val_loss}")
             best_val_loss = val_loss
-            torch.save(model.state_dict(), f"./logs/{dt_string}/best.pt")
+        torch.save(model.state_dict(), f"./logs/{dt_string}/best_{epoch}.pt")
 
     writer.close()
 

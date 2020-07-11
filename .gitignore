@@ -1,2 +1,4 @@
 .idea
 *.pt
+logs/
+__pycache__/

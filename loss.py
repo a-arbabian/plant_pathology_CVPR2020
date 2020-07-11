@@ -9,4 +9,5 @@ class CrossEntropyLossOneHot(nn.Module):
         self.log_softmax = nn.LogSoftmax(dim=-1)
 
     def forward(self, preds, labels):
-        return torch.mean(torch.sum(-labels * self.log_softmax(preds), -1))
+        loss = torch.mean(torch.sum(-labels * self.log_softmax(preds), -1))
+        return loss

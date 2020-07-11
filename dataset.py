@@ -7,9 +7,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import random
 
-class PlantDataset(Dataset):
 
-    def __init__(self, root_dir, csv_path, transform=None):
+class PlantDataset(Dataset):
+    def __init__(self, root_dir, csv_path=None, csv=None, transform=None):
         """
         Args:
             root_dir (string): Directory with all the images.
@@ -17,9 +17,13 @@ class PlantDataset(Dataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
+        assert csv_path is not None or csv is not None, "One of csv_path or csv must be provided"
+        if csv is not None:
+            self.csv = csv
+        else:
+            self.csv = pd.read_csv(csv_path)
 
         self.root_dir = root_dir
-        self.csv = pd.read_csv(csv_path)
         self.transform = transform
 
     def __len__(self):
@@ -47,7 +51,6 @@ class PlantDataset(Dataset):
         fp = os.path.join(self.root_dir, im_name) + '.jpg'
         img = Image.open(fp).convert('RGB')
 
-        #(2048, 1365)
         label = torch.FloatTensor([self.csv["healthy"][idx],
                                    self.csv["multiple_diseases"][idx],
                                    self.csv["rust"][idx],
@@ -55,6 +58,8 @@ class PlantDataset(Dataset):
 
         if self.transform:
             img = self.transform(img)
+        # plt.imshow(img.permute(1,2,0))
+        # plt.show()
 
         sample = {'image': img, 'label': label}
         return sample

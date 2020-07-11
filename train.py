@@ -284,7 +284,7 @@ if __name__ == "__main__":
         if val_loss < best_val_loss:
             print(f"Record val loss: {val_loss}")
             best_val_loss = val_loss
-        torch.save(model.state_dict(), f"./logs/{dt_string}/best_{epoch}.pt")
+            torch.save(model.state_dict(), f"./logs/{dt_string}/best.pt")
 
     writer.close()
 

@@ -4,8 +4,13 @@ This competition is part of the Fine-Grained Visual Categorization FGVC7 worksho
 Link to competition page: https://www.kaggle.com/c/plant-pathology-2020-fgvc7
 
 ### TODO:
-* Cross validation
-* Balanced sampling for under-represented "multiple_diseases" class
-* Afifi WB augmentations
-* Augmix
-* Soft labels
+- [x] Dataset class and loader
+- [x] Initial training pipeline
+- [x] Try a few off-the-shelf nets
+- [x] Augmentations
+- [x] Tensorboard
+- [ ] Cross validation
+- [ ] Balanced sampling for under-represented "multiple_diseases" class
+- [ ] WhiteBalance augmentations
+- [ ] Augmix
+- [ ] Soft labels
